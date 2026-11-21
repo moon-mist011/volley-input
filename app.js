@@ -10,6 +10,8 @@ const TOSS_NAMES = {
 };
 const RESULT_NAMES = { 0: "継続", 1: "決定", 2: "ミス", 3: "ブロックアウト" };
 const TARGET_URL = "https://valley-6121a.web.app/";
+const MAX_ROSTER_SIZE = 14;
+const MAX_LIBERO_COUNT = 2;
 
 function readStorage(key, fallback) {
   try {
@@ -23,13 +25,21 @@ function readStorage(key, fallback) {
 
 function normalizeRoster(roster) {
   if (!Array.isArray(roster)) return [];
-  return [...new Map(roster.map(entry => {
+  const players = [...new Map(roster.map(entry => {
     const player = typeof entry === "number" ? { number: entry, libero: false } : entry;
     return [Number(player?.number), {
       number: Number(player?.number),
       libero: Boolean(player?.libero)
     }];
-  }).filter(([number]) => Number.isInteger(number) && number >= 0 && number <= 99))].map(([, player]) => player);
+  }).filter(([number]) => Number.isInteger(number) && number >= 0 && number <= 99))].map(([, player]) => player)
+    .sort((a, b) => a.number - b.number)
+    .slice(0, MAX_ROSTER_SIZE);
+  let liberoCount = 0;
+  return players.map(player => {
+    if (!player.libero) return player;
+    liberoCount += 1;
+    return { ...player, libero: liberoCount <= MAX_LIBERO_COUNT };
+  });
 }
 
 const storedRoster = readStorage("volley-spike-roster", null);
@@ -44,6 +54,7 @@ const state = {
   courseFlipped: readStorage("volley-spike-course-flipped", false),
   matchActive: readStorage("volley-spike-match-active", false),
   currentMatchId: readStorage("volley-spike-current-match", null),
+  lastFinishedSnapshot: readStorage("volley-spike-finish-snapshot", null),
   historyOpen: false,
   selectedHistoryKey: null,
   current: { player: null, position: null, toss: null, course: null, result: null }
@@ -77,21 +88,49 @@ function showToast(message) {
 function renderRoster() {
   const list = el("rosterList");
   list.replaceChildren();
-  el("rosterCount").textContent = `${state.roster.length}人`;
+  el("rosterCount").textContent = `${state.roster.length}/${MAX_ROSTER_SIZE}人`;
+  el("addPlayer").disabled = state.roster.length >= MAX_ROSTER_SIZE;
+  el("isLibero").disabled = state.roster.filter(player => player.libero).length >= MAX_LIBERO_COUNT;
 
   state.roster.forEach(player => {
     const item = document.createElement("li");
     item.className = "roster-item";
 
-    const name = document.createElement("span");
-    name.className = "roster-number";
-    name.textContent = `#${player.number}`;
+    const numberButton = document.createElement("button");
+    numberButton.type = "button";
+    numberButton.className = "roster-number-button";
+    numberButton.textContent = `#${player.number}`;
+    numberButton.setAttribute("aria-expanded", "false");
+    const liberoEditor = document.createElement("label");
+    liberoEditor.className = "roster-libero-editor";
+    liberoEditor.hidden = true;
+    const liberoCheckbox = document.createElement("input");
+    liberoCheckbox.type = "checkbox";
+    liberoCheckbox.checked = player.libero;
+    const liberoText = document.createElement("span");
+    liberoText.textContent = "リベロ";
+    liberoEditor.append(liberoCheckbox, liberoText);
+    numberButton.addEventListener("click", () => {
+      liberoEditor.hidden = !liberoEditor.hidden;
+      numberButton.setAttribute("aria-expanded", String(!liberoEditor.hidden));
+    });
+    liberoCheckbox.addEventListener("change", () => {
+      if (liberoCheckbox.checked && !player.libero &&
+          state.roster.filter(entry => entry.libero).length >= MAX_LIBERO_COUNT) {
+        liberoCheckbox.checked = false;
+        showToast(`リベロは${MAX_LIBERO_COUNT}人まで登録できます`);
+        return;
+      }
+      player.libero = liberoCheckbox.checked;
+      save("volley-spike-roster", state.roster);
+      renderRoster();
+    });
 
     if (player.libero) {
       const badge = document.createElement("span");
       badge.className = "libero-badge";
       badge.textContent = "リベロ";
-      name.append(" ", badge);
+      numberButton.append(" ", badge);
     }
 
     const remove = document.createElement("button");
@@ -105,7 +144,7 @@ function renderRoster() {
       renderRoster();
     });
 
-    item.append(name, remove);
+    item.append(numberButton, liberoEditor, remove);
     list.append(item);
   });
 }
@@ -120,6 +159,15 @@ function addPlayer() {
   }
   if (state.roster.some(player => player.number === number)) {
     message.textContent = `背番号${number}はすでに登録されています。`;
+    return;
+  }
+  if (state.roster.length >= MAX_ROSTER_SIZE) {
+    message.textContent = `選手は${MAX_ROSTER_SIZE}人まで登録できます。`;
+    return;
+  }
+  if (el("isLibero").checked &&
+      state.roster.filter(player => player.libero).length >= MAX_LIBERO_COUNT) {
+    message.textContent = `リベロは${MAX_LIBERO_COUNT}人まで登録できます。`;
     return;
   }
 
@@ -167,28 +215,100 @@ function startMatch(event) {
   save("volley-spike-opponent", opponentName);
   save("volley-spike-baseline-side", state.baselineSide);
   save("volley-spike-match-active", state.matchActive);
+  state.lastFinishedSnapshot = null;
+  save("volley-spike-finish-snapshot", null);
+  el("undoFinish").hidden = true;
   el("activeSchool").textContent = `${schoolName}　対　${opponentName}`;
   el("setupScreen").hidden = true;
   el("matchScreen").hidden = false;
   el("editSetup").hidden = false;
   state.step = 0;
   state.current = { player: null, position: null, toss: null, course: null, result: null };
+  renderHistory();
   renderStep();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function finishMatch() {
+  state.lastFinishedSnapshot = {
+    schoolName: state.schoolName,
+    opponentName: state.opponentName,
+    roster: state.roster.map(player => ({ ...player })),
+    baselineSide: state.baselineSide,
+    courseFlipped: state.courseFlipped,
+    currentMatchId: state.currentMatchId,
+    step: state.step,
+    current: { ...state.current }
+  };
+  save("volley-spike-finish-snapshot", state.lastFinishedSnapshot);
   state.step = 0;
   state.matchActive = false;
   state.currentMatchId = null;
   state.courseFlipped = false;
+  state.schoolName = "";
+  state.opponentName = "";
+  state.roster = [];
+  state.baselineSide = "near";
   save("volley-spike-match-active", state.matchActive);
   save("volley-spike-current-match", null);
   save("volley-spike-course-flipped", false);
+  save("volley-spike-school", "");
+  save("volley-spike-opponent", "");
+  save("volley-spike-roster", []);
+  save("volley-spike-baseline-side", "near");
   state.current = { player: null, position: null, toss: null, course: null, result: null };
+  el("schoolName").value = "";
+  el("opponentName").value = "";
+  el("playerNumber").value = "";
+  el("isLibero").checked = false;
+  el("setupMessage").textContent = "";
+  el("baselineNear").checked = true;
+  el("baselineFar").checked = false;
+  el("undoFinish").hidden = false;
+  renderRoster();
   el("matchScreen").hidden = true;
   el("setupScreen").hidden = false;
   el("editSetup").hidden = true;
+  renderHistory();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function undoFinish() {
+  const snapshot = state.lastFinishedSnapshot;
+  if (!snapshot) return;
+
+  state.schoolName = snapshot.schoolName;
+  state.opponentName = snapshot.opponentName;
+  state.roster = normalizeRoster(snapshot.roster);
+  state.baselineSide = snapshot.baselineSide === "far" ? "far" : "near";
+  state.courseFlipped = Boolean(snapshot.courseFlipped);
+  state.currentMatchId = snapshot.currentMatchId || createMatchId();
+  state.step = Number.isInteger(snapshot.step) ? snapshot.step : 0;
+  state.current = { ...snapshot.current };
+  state.matchActive = true;
+  state.lastFinishedSnapshot = null;
+
+  save("volley-spike-school", state.schoolName);
+  save("volley-spike-opponent", state.opponentName);
+  save("volley-spike-roster", state.roster);
+  save("volley-spike-baseline-side", state.baselineSide);
+  save("volley-spike-course-flipped", state.courseFlipped);
+  save("volley-spike-current-match", state.currentMatchId);
+  save("volley-spike-match-active", true);
+  save("volley-spike-finish-snapshot", null);
+
+  el("schoolName").value = state.schoolName;
+  el("opponentName").value = state.opponentName;
+  el("baselineNear").checked = state.baselineSide === "near";
+  el("baselineFar").checked = state.baselineSide === "far";
+  el("activeSchool").textContent = `${state.schoolName}　対　${state.opponentName}`;
+  el("undoFinish").hidden = true;
+  el("setupScreen").hidden = true;
+  el("matchScreen").hidden = false;
+  el("editSetup").hidden = false;
+  renderRoster();
+  renderHistory();
+  renderStep();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -229,7 +349,8 @@ function renderStep() {
     : info.hint;
   el("stepCounter").textContent = `${state.step + 1} / ${STEP_INFO.length}`;
   el("progressBar").style.width = `${((state.step + 1) / STEP_INFO.length) * 100}%`;
-  const canUndoRecord = state.step === 0 && state.records.length > 0;
+  const canUndoRecord = state.step === 0 &&
+    state.records.some(record => record.matchId === state.currentMatchId);
   el("backButton").disabled = state.step === 0 && !canUndoRecord;
   el("backButton").textContent = canUndoRecord ? "↶ 直前を取り消す" : "← 戻る";
 
@@ -249,7 +370,7 @@ function renderStep() {
       area.append(button);
     });
   } else if (info.key === "position") {
-    area.className = "choice-grid";
+    area.className = "choice-grid position-choice-grid";
     Object.entries(POS_NAMES).forEach(([number, name]) => area.append(makeChoice(Number(number), name)));
   } else if (info.key === "toss") {
     area.className = "choice-grid";
@@ -314,9 +435,12 @@ function backOneStep() {
     renderStep();
     return;
   }
-  if (state.records.length === 0) return;
+  const lastCurrentRecordIndex = state.records.findIndex(
+    record => record.matchId === state.currentMatchId
+  );
+  if (lastCurrentRecordIndex === -1) return;
 
-  const last = state.records.shift();
+  const [last] = state.records.splice(lastCurrentRecordIndex, 1);
   state.current = {
     player: last.player,
     position: last.position,
@@ -371,6 +495,53 @@ function getHistoryGroupKey(record) {
     : `legacy:${JSON.stringify([record.school || "", record.opponent || ""])}`;
 }
 
+function makeHistoryRecordItem(record, groupName) {
+  const item = document.createElement("li");
+  item.className = "history-item";
+  const course = record.course === 0 ? "その他" : `コース${record.course}`;
+  const time = new Date(record.time).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const detail = document.createElement("div");
+  detail.className = "history-detail";
+  const matchup = document.createElement("span");
+  matchup.className = "history-matchup";
+  if (record.school || record.opponent) {
+    matchup.textContent = `${record.school || ""}　対　${record.opponent || ""}`;
+  }
+  const title = document.createElement("strong");
+  title.textContent = `#${record.player}${record.libero ? "（リベロ）" : ""}　${POS_NAMES[record.position]}　${TOSS_NAMES[record.toss]}`;
+  const description = document.createElement("span");
+  description.textContent = `${course}　${RESULT_NAMES[record.result]}　${time}`;
+  const code = document.createElement("span");
+  code.className = "history-code";
+  code.textContent = record.code;
+  const enteredLabel = document.createElement("label");
+  enteredLabel.className = "entered-toggle";
+  const enteredCheckbox = document.createElement("input");
+  enteredCheckbox.type = "checkbox";
+  enteredCheckbox.checked = Boolean(record.entered);
+  enteredCheckbox.addEventListener("change", () => {
+    record.entered = enteredCheckbox.checked;
+    saveRecords();
+  });
+  const enteredText = document.createElement("span");
+  enteredText.textContent = "入力済";
+  enteredLabel.append(enteredCheckbox, enteredText);
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "delete-record";
+  deleteButton.textContent = "削除";
+  deleteButton.setAttribute("aria-label", `${groupName}の記録を削除`);
+  deleteButton.addEventListener("click", () => {
+    const index = state.records.indexOf(record);
+    if (index !== -1) state.records.splice(index, 1);
+    saveRecords();
+  });
+  if (matchup.textContent) detail.append(matchup);
+  detail.append(title, description);
+  item.append(detail, code, enteredLabel, deleteButton);
+  return item;
+}
+
 function renderHistory() {
   const groups = new Map();
   state.records.forEach(record => {
@@ -397,16 +568,30 @@ function renderHistory() {
   el("historyBrowser").hidden = !state.historyOpen;
   el("historyToggle").setAttribute("aria-expanded", String(state.historyOpen));
   el("historyToggleLabel").textContent = state.historyOpen ? "入力履歴を閉じる" : "入力履歴を見る";
+  el("historyHub").hidden = state.matchActive;
+  el("currentMatchHistory").hidden = !state.matchActive;
   el("matchListView").hidden = Boolean(selectedGroup);
   el("matchDetailView").hidden = !selectedGroup;
   el("emptyHistory").hidden = state.records.length > 0;
   el("copyAll").disabled = state.records.length === 0;
   el("copyMatch").disabled = !selectedGroup;
-  const canUndoRecord = state.step === 0 && state.records.length > 0;
+  const canUndoRecord = state.step === 0 &&
+    state.records.some(record => record.matchId === state.currentMatchId);
   el("backButton").disabled = state.step === 0 && !canUndoRecord;
   if (state.step === 0) {
     el("backButton").textContent = canUndoRecord ? "↶ 直前を取り消す" : "← 戻る";
   }
+
+  const currentRecords = state.currentMatchId
+    ? state.records.filter(record => record.matchId === state.currentMatchId)
+    : [];
+  el("currentMatchRecordCount").textContent = `${currentRecords.length} 件`;
+  el("emptyCurrentMatch").hidden = currentRecords.length > 0;
+  const currentMatchList = el("currentMatchHistoryList");
+  currentMatchList.replaceChildren();
+  currentRecords.forEach(record => {
+    currentMatchList.append(makeHistoryRecordItem(record, "この試合"));
+  });
 
   const cards = el("matchCards");
   cards.replaceChildren();
@@ -427,58 +612,18 @@ function renderHistory() {
     cards.append(card);
   });
 
+  const list = el("historyList");
+  list.replaceChildren();
   if (!selectedGroup) return;
   el("detailMatchup").textContent =
     `${selectedGroup.school || "校名未登録"}　対　${selectedGroup.opponent || "対戦校未登録"}`;
   el("recordCount").textContent = `${selectedGroup.records.length} 件`;
 
-  const list = el("historyList");
-  list.replaceChildren();
   selectedGroup.records.forEach(record => {
-    const item = document.createElement("li");
-    item.className = "history-item";
-    const course = record.course === 0 ? "その他" : `コース${record.course}`;
-    const time = new Date(record.time).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-    const detail = document.createElement("div");
-    detail.className = "history-detail";
-    const matchup = document.createElement("span");
-    matchup.className = "history-matchup";
-    if (record.school || record.opponent) {
-      matchup.textContent = `${record.school || ""}　対　${record.opponent || ""}`;
-    }
-    const title = document.createElement("strong");
-    title.textContent = `#${record.player}${record.libero ? "（リベロ）" : ""}　${POS_NAMES[record.position]}　${TOSS_NAMES[record.toss]}`;
-    const description = document.createElement("span");
-    description.textContent = `${course}　${RESULT_NAMES[record.result]}　${time}`;
-    const code = document.createElement("span");
-    code.className = "history-code";
-    code.textContent = record.code;
-    const enteredLabel = document.createElement("label");
-    enteredLabel.className = "entered-toggle";
-    const enteredCheckbox = document.createElement("input");
-    enteredCheckbox.type = "checkbox";
-    enteredCheckbox.checked = Boolean(record.entered);
-    enteredCheckbox.addEventListener("change", () => {
-      record.entered = enteredCheckbox.checked;
-      saveRecords();
-    });
-    const enteredText = document.createElement("span");
-    enteredText.textContent = "入力済";
-    enteredLabel.append(enteredCheckbox, enteredText);
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "delete-record";
-    deleteButton.textContent = "削除";
-    deleteButton.setAttribute("aria-label", `${selectedGroup.school} 対 ${selectedGroup.opponent} の記録を削除`);
-    deleteButton.addEventListener("click", () => {
-      const index = state.records.indexOf(record);
-      if (index !== -1) state.records.splice(index, 1);
-      saveRecords();
-    });
-    if (matchup.textContent) detail.append(matchup);
-    detail.append(title, description);
-    item.append(detail, code, enteredLabel, deleteButton);
-    list.append(item);
+    list.append(makeHistoryRecordItem(
+      record,
+      `${selectedGroup.school || "校名未登録"} 対 ${selectedGroup.opponent || "対戦校未登録"}`
+    ));
   });
 }
 
@@ -526,6 +671,7 @@ el("baselineFar").addEventListener("change", () => {
 });
 el("backButton").addEventListener("click", backOneStep);
 el("finishMatch").addEventListener("click", finishMatch);
+el("undoFinish").addEventListener("click", undoFinish);
 el("historyToggle").addEventListener("click", () => {
   state.historyOpen = !state.historyOpen;
   if (!state.historyOpen) state.selectedHistoryKey = null;
@@ -555,5 +701,12 @@ el("openTarget").addEventListener("click", () => window.open(TARGET_URL, "_blank
 
 el("schoolName").value = state.schoolName;
 el("opponentName").value = state.opponentName;
+el("undoFinish").hidden = !state.lastFinishedSnapshot;
 renderRoster();
 renderHistory();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+    .then(registration => registration.update())
+    .catch(error => console.error("Service Workerの登録に失敗しました", error));
+}

@@ -22,7 +22,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir _site
-          cp index.html app.js styles.css _site/
+          cp index.html app.js styles.css sw.js _site/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

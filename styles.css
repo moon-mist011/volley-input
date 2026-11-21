@@ -56,10 +56,13 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .registered-heading { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px; }
 .registered-heading h3 { margin: 0; font-size: 18px; }
 .roster-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; max-height: 205px; overflow-y: auto; margin: 0; padding: 0 2px 2px; list-style: none; }
-.roster-item { display: flex; justify-content: space-between; align-items: center; gap: 5px; min-height: 50px; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; padding: 5px 8px 5px 12px; }
-.roster-number { font-size: 19px; font-weight: 900; }
+.roster-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; min-height: 50px; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; padding: 5px 8px 5px 12px; }
+.roster-number-button { min-height: 38px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); padding: 0 4px; font-size: 19px; font-weight: 900; }
+.roster-number-button:hover { background: #eaf0ff; }
+.roster-libero-editor { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 850; white-space: nowrap; }
+.roster-libero-editor input { width: 20px; height: 20px; margin: 0; accent-color: var(--blue); }
 .libero-badge { border-radius: 99px; background: #e0efff; color: #1556a5; padding: 3px 7px; font-size: 11px; font-weight: 900; }
-.remove-player { min-height: 34px; border: 0; border-radius: 7px; background: #fff0f1; color: var(--red); padding: 0 9px; font-size: 13px; font-weight: 800; }
+.remove-player { grid-column: 2; grid-row: 1; min-height: 34px; border: 0; border-radius: 7px; background: #fff0f1; color: var(--red); padding: 0 9px; font-size: 13px; font-weight: 800; }
 .baseline-setting { margin: 18px 0 0; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .baseline-setting legend { padding: 0 6px; font-size: 17px; font-weight: 900; }
 .baseline-setting > p { margin: 0 0 9px; color: var(--muted); font-size: 13px; }
@@ -68,6 +71,7 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .baseline-option:has(input:checked) { border-color: var(--blue); background: #eff6ff; color: var(--navy); }
 .baseline-option input { width: 21px; height: 21px; flex: 0 0 auto; accent-color: var(--blue); }
 .start-button { width: 100%; min-height: 70px; margin-top: 22px; border: 0; border-radius: 13px; background: var(--navy); color: white; font-size: clamp(22px, 3vw, 28px); font-weight: 950; box-shadow: 0 7px 16px rgba(26, 42, 108, .2); }
+.undo-finish-button { width: 100%; min-height: 54px; margin-top: 10px; border: 1px solid var(--navy); border-radius: 11px; background: white; color: var(--navy); font-size: 17px; font-weight: 900; }
 
 .match-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 5px 0 12px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 13px; background: white; }
 .match-bar > div:first-child { min-width: 0; }
@@ -87,6 +91,8 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .choice-button:active { transform: scale(.97); }
 .choice-button:hover { border-color: #9eb4d8; background: #f1f5ff; }
 .player-choice-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.position-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.position-choice-grid .choice-button { padding: 8px 4px; font-size: clamp(13px, 2.4vw, 20px); }
 .player-choice-label { display: block; }
 .player-choice-label small { display: block; margin-top: 5px; color: #1556a5; font-size: 13px; }
 .course-choice-area { width: min(450px, 100%); margin: 0 auto; }
@@ -126,6 +132,7 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .detail-heading h2 { margin: 0 0 4px; font-size: clamp(18px, 3vw, 24px); overflow-wrap: anywhere; }
 .history-action-button { width: 100%; min-height: 48px; margin-top: 12px; border: 0; border-radius: 9px; background: var(--navy); color: white; font-weight: 850; }
 .history-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#currentMatchHistoryList { display: flex; flex-direction: column; }
 .history-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 58px; border: 1px solid #e8edf3; border-radius: 9px; background: #fbfcfe; padding: 8px 12px; }
 .history-detail { min-width: 0; }
 .history-matchup { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; }

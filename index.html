@@ -68,6 +68,7 @@
 
         <button id="startMatch" class="start-button" type="submit">試合開始</button>
       </form>
+      <button id="undoFinish" class="undo-finish-button" type="button" hidden>試合終了を取り消す</button>
     </section>
 
     <section id="matchScreen" class="screen match-screen" hidden>
@@ -93,9 +94,17 @@
         <div id="choiceArea"></div>
       </section>
 
+      <section id="currentMatchHistory" class="history card">
+        <div class="section-heading history-heading">
+          <h2>この試合の入力履歴</h2>
+          <span id="currentMatchRecordCount">0 件</span>
+        </div>
+        <div id="emptyCurrentMatch" class="empty">この試合の記録はまだありません</div>
+        <ol id="currentMatchHistoryList" class="history-list"></ol>
+      </section>
     </section>
 
-    <section class="history-hub">
+    <section id="historyHub" class="history-hub">
       <button id="historyToggle" class="history-toggle" type="button" aria-expanded="false">
         <span id="historyToggleLabel">入力履歴を見る</span>
         <span id="historySummary">0試合・0件</span>
