@@ -22,3 +22,11 @@ python3 -m http.server 4173
 ブラウザで `http://localhost:4173` を開いてください。登録情報と履歴はブラウザのローカルストレージに保存されます。
 
 生成したコードを元サイトのテンキー入力欄へ貼り付けるか、「元サイトを開く」から対象サイトへ移動できます。
+
+## GitHub Pagesで公開
+
+1. GitHubリポジトリの **Settings → Pages** を開き、Build and deployment の Source を **GitHub Actions** に設定します。
+2. `main` ブランチへ変更をpushするか、Actionsタブから **Deploy to GitHub Pages** を手動実行します。
+3. 公開URLは `https://moon-mist011.github.io/volley-input/` です。
+
+公開後も、校名・選手・試合履歴は利用したブラウザ内に保存されます。GitHub Pagesへの公開によってクラウド同期されるわけではありません。
