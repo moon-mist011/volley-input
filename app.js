@@ -44,6 +44,7 @@ function normalizeRoster(roster) {
 
 const storedRoster = readStorage("volley-spike-roster", null);
 const storedBaselineSide = readStorage("volley-spike-baseline-side", "near");
+const storedProgress = readStorage("volley-spike-progress", null);
 const state = {
   schoolName: readStorage("volley-spike-school", ""),
   opponentName: readStorage("volley-spike-opponent", ""),
@@ -60,6 +61,14 @@ const state = {
   current: { player: null, position: null, toss: null, course: null, result: null }
 };
 
+if (state.matchActive && storedProgress &&
+    Number.isInteger(storedProgress.step) &&
+    storedProgress.step >= 0 && storedProgress.step < 5 &&
+    storedProgress.current && typeof storedProgress.current === "object") {
+  state.step = storedProgress.step;
+  state.current = { ...state.current, ...storedProgress.current };
+}
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -75,6 +84,14 @@ function save(key, value) {
     console.error(`保存に失敗しました: ${key}`, error);
     showToast("保存できませんでした。端末の空き容量を確認してください");
   }
+}
+
+function saveProgress() {
+  if (!state.matchActive) return;
+  save("volley-spike-progress", {
+    step: state.step,
+    current: { ...state.current }
+  });
 }
 
 function showToast(message) {
@@ -183,6 +200,7 @@ function addPlayer() {
 
 function startMatch(event) {
   event.preventDefault();
+  const isNewMatch = !state.matchActive;
   const schoolName = el("schoolName").value.trim();
   const opponentName = el("opponentName").value.trim();
   if (!schoolName) {
@@ -201,14 +219,22 @@ function startMatch(event) {
   state.schoolName = schoolName;
   state.opponentName = opponentName;
   state.baselineSide = el("baselineFar").checked ? "far" : "near";
-  if (!state.matchActive) {
+  if (isNewMatch) {
     state.courseFlipped = state.baselineSide === "far";
     state.currentMatchId = createMatchId();
+    state.step = 0;
+    state.current = { player: null, position: null, toss: null, course: null, result: null };
+    save("volley-spike-progress", null);
     save("volley-spike-course-flipped", state.courseFlipped);
     save("volley-spike-current-match", state.currentMatchId);
   } else if (!state.currentMatchId) {
     state.currentMatchId = createMatchId();
     save("volley-spike-current-match", state.currentMatchId);
+  }
+  if (state.current.player !== null &&
+      !state.roster.some(player => player.number === state.current.player)) {
+    state.step = 0;
+    state.current = { player: null, position: null, toss: null, course: null, result: null };
   }
   state.matchActive = true;
   save("volley-spike-school", schoolName);
@@ -218,12 +244,11 @@ function startMatch(event) {
   state.lastFinishedSnapshot = null;
   save("volley-spike-finish-snapshot", null);
   el("undoFinish").hidden = true;
+  saveProgress();
   el("activeSchool").textContent = `${schoolName}　対　${opponentName}`;
   el("setupScreen").hidden = true;
   el("matchScreen").hidden = false;
   el("editSetup").hidden = false;
-  state.step = 0;
-  state.current = { player: null, position: null, toss: null, course: null, result: null };
   renderHistory();
   renderStep();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -256,6 +281,7 @@ function finishMatch() {
   save("volley-spike-opponent", "");
   save("volley-spike-roster", []);
   save("volley-spike-baseline-side", "near");
+  save("volley-spike-progress", null);
   state.current = { player: null, position: null, toss: null, course: null, result: null };
   el("schoolName").value = "";
   el("opponentName").value = "";
@@ -296,6 +322,7 @@ function undoFinish() {
   save("volley-spike-current-match", state.currentMatchId);
   save("volley-spike-match-active", true);
   save("volley-spike-finish-snapshot", null);
+  saveProgress();
 
   el("schoolName").value = state.schoolName;
   el("opponentName").value = state.opponentName;
@@ -425,6 +452,7 @@ function choose(value) {
     return;
   }
   state.step += 1;
+  saveProgress();
   renderStep();
 }
 
@@ -432,6 +460,7 @@ function backOneStep() {
   if (state.step > 0) {
     state.current[STEP_INFO[state.step - 1].key] = null;
     state.step -= 1;
+    saveProgress();
     renderStep();
     return;
   }
@@ -450,6 +479,7 @@ function backOneStep() {
   };
   state.step = STEP_INFO.length - 1;
   saveRecords();
+  saveProgress();
   renderStep();
   showToast("直前の記録を取り消しました。結果を選び直してください");
 }
@@ -477,10 +507,11 @@ function addRecord() {
     entered: false,
     time: new Date().toISOString()
   });
-  saveRecords();
-  showToast(`${code} を記録しました`);
   state.step = 0;
   state.current = { player: null, position: null, toss: null, course: null, result: null };
+  saveProgress();
+  saveRecords();
+  showToast(`${code} を記録しました`);
   renderStep();
 }
 
@@ -657,6 +688,14 @@ el("playerNumber").addEventListener("keydown", event => {
   }
 });
 el("schoolForm").addEventListener("submit", startMatch);
+el("schoolName").addEventListener("input", () => {
+  state.schoolName = el("schoolName").value;
+  save("volley-spike-school", state.schoolName);
+});
+el("opponentName").addEventListener("input", () => {
+  state.opponentName = el("opponentName").value;
+  save("volley-spike-opponent", state.opponentName);
+});
 el("baselineNear").checked = state.baselineSide === "near";
 el("baselineFar").checked = state.baselineSide === "far";
 el("baselineNear").addEventListener("change", () => {
@@ -703,7 +742,18 @@ el("schoolName").value = state.schoolName;
 el("opponentName").value = state.opponentName;
 el("undoFinish").hidden = !state.lastFinishedSnapshot;
 renderRoster();
+if (state.matchActive) {
+  if (!state.currentMatchId) {
+    state.currentMatchId = createMatchId();
+    save("volley-spike-current-match", state.currentMatchId);
+  }
+  el("activeSchool").textContent = `${state.schoolName}　対　${state.opponentName}`;
+  el("setupScreen").hidden = true;
+  el("matchScreen").hidden = false;
+  el("editSetup").hidden = false;
+}
 renderHistory();
+if (state.matchActive) renderStep();
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
