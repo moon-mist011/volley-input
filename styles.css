@@ -172,6 +172,7 @@ button:disabled { cursor: not-allowed; opacity: .4; }
   .add-button { grid-column: 1 / -1; }
   .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .position-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .player-choice-grid .choice-button { min-height: 68px; }
   .history-actions { grid-template-columns: 1fr; }
 }
